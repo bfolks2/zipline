@@ -4,20 +4,9 @@ import os
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 
-# Zip constants
-MAX_SPEED = 30  # meters per section
-MAX_DELIVERIES = 3
-MAX_RANGE = 160  # kilometers
-NUMBER_OF_ZIPS = 10
-
 # Data arrays
 hospital_database = []
 all_orders_list = []
-
-# Live queues
-order_queue = []
-scheduled_flights = []
-zip_dict = dict.fromkeys(range(1, (NUMBER_OF_ZIPS + 1)), None)
 
 
 class Order(object):
@@ -60,8 +49,6 @@ class Flight(object):
         self.order_arr = order_arr
         self.start_time = start_time  # Assuming that flights start immediately after scheduled
 
-        zip_dict[self.zip_id] = self.start_time
-
     def __str__(self):
         return u'Zip #{}, {} Orders, Start Time: {}'.format(self.zip_id, len(self.order_arr), self.start_time)
 
@@ -73,23 +60,31 @@ class Flight(object):
 
 
 class ZipScheduler(object):
+    # Zip constants
+    MAX_SPEED = 30  # meters per section
+    MAX_DELIVERIES = 3
+    MAX_RANGE = 160  # kilometers
+    NUMBER_OF_ZIPS = 10
 
-    @staticmethod
-    def queue_order(received_time, hospital, priority):
+    # Live queues
+    order_queue = []
+    scheduled_flights = []
+    zip_dict = dict.fromkeys(range(1, (NUMBER_OF_ZIPS + 1)), None)
+
+    def queue_order(self, received_time, hospital, priority):
         order_obj = Order(received_time, hospital, priority)
 
         # Only append to the order_queue if we successfully matched a Hospital
         if order_obj.hospital:
-            order_queue.append(order_obj)
+            self.order_queue.append(order_obj)
 
-    @staticmethod
-    def schedule_next_flight(current_time):
-        if not len(order_queue):
+    def schedule_next_flight(self, current_time):
+        if not len(self.order_queue):
             return None
 
-        flight_obj = Flight(zip_id=1, order_arr=order_queue, start_time=current_time)
-        scheduled_flights.append(flight_obj)
-        order_queue = []
+        flight_obj = Flight(zip_id=1, order_arr=self.order_queue, start_time=current_time)
+        self.scheduled_flights.append(flight_obj)
+        self.order_queue = []
 
 
 # *******************************************************************************************
