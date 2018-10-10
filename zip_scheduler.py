@@ -1,4 +1,4 @@
-from datetime import datetime
+from math import sqrt
 import csv
 import os
 
@@ -26,10 +26,21 @@ class Order(object):
 class Hospital(object):
     def __init__(self, name, coordinates):
         self.name = name
-        self.coordinates = coordinates  # X,Y in meters
+        self.x = coordinates[0]
+        self.y = coordinates[1]
 
     def __str__(self):
-        return u'{} @ {}'.format(self.name, self.coordinates)
+        return u'{} @ ({}, {})'.format(self.name, self.x, self.y)
+
+    def get_distance_to_origin(self):
+        return self._distance_formula_km(x1=0, y1=0, x2=self.x, y2=self.y)
+
+    def get_distance_to_other_hospital(self, other_hospital):
+        return self._distance_formula_km(x1=other_hospital.x, y1=other_hospital.y, x2=self.x, y2=self.y)
+
+    @staticmethod
+    def _distance_formula_km(x1, y1, x2, y2):
+        return sqrt(((x2 - x1) ** 2) + ((y2 - y1) ** 2)) / 1000
 
 
 def hospital_query(param, value):
