@@ -146,7 +146,9 @@ class ZipScheduler(object):
             resupply_order_arr = self.compile_resupply_order()
             if resupply_order_arr:
                 flight_obj = Flight(order_arr=resupply_order_arr, start_time=current_time)
+                resupply_flight_zip.set_flight(flight_obj)
                 scheduled_flights.append(flight_obj)
+                self.order_queue = [order for order in self.order_queue if order not in resupply_order_arr]
 
         return [flight_obj.get_hospital_list_text() for flight_obj in scheduled_flights]
 
