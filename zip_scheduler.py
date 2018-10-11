@@ -145,13 +145,15 @@ class ZipScheduler(object):
             self.emergency_order_queue.pop(0)  # Remove the processed Order from the queue
 
         resupply_flight_zip = next(self.get_available_resupply_zips(current_time), None)
-        if len(self.order_queue) and resupply_flight_zip:
+        while len(self.order_queue) and resupply_flight_zip:
             resupply_order_arr, resupply_distance = self.compile_resupply_order()
             if resupply_order_arr:
                 flight_obj = Flight(order_arr=resupply_order_arr, start_time=current_time, distance=resupply_distance)
                 resupply_flight_zip.set_flight(flight_obj)
                 scheduled_flights.append(flight_obj)
+
                 self.order_queue = [order for order in self.order_queue if order not in resupply_order_arr]
+                resupply_flight_zip = next(self.get_available_resupply_zips(current_time), None)
 
         return [flight_obj.get_hospital_list_text() for flight_obj in scheduled_flights]
 
