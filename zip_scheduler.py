@@ -56,9 +56,10 @@ def hospital_query(param, value):
 
 
 class Flight(object):
-    def __init__(self, order_arr, start_time):
+    def __init__(self, order_arr, start_time, distance):
         self.order_arr = order_arr
         self.start_time = start_time  # Assuming that flights start immediately after scheduled
+        self.distance = distance  #kilometers
 
     def __str__(self):
         return u'{} Orders, Start Time: {}'.format(len(self.order_arr), self.start_time)
@@ -67,7 +68,8 @@ class Flight(object):
         return ', '.join([order.hospital.name for order in self.order_arr])
 
     def get_projected_end_time(self):
-        return 0
+        total_time = (self.distance * 1000) / ZipScheduler.MAX_SPEED
+        return self.start_time + total_time
 
 
 class Zip(object):
@@ -91,7 +93,7 @@ class Zip(object):
 
 class ZipScheduler(object):
     # Zip constants
-    MAX_SPEED = 30  # meters per section
+    MAX_SPEED = 30  # meters per second
     MAX_DELIVERIES = 3
     MAX_RANGE = 160  # kilometers
     NUMBER_OF_ZIPS = 10  # Can be used for either Resupply or Emergency
@@ -136,16 +138,17 @@ class ZipScheduler(object):
             if not flight_zip:
                 return None
 
-            flight_obj = Flight(order_arr=[order], start_time=current_time)
+            emergency_distance = order.hospital.get_distance_to_origin() * 2
+            flight_obj = Flight(order_arr=[order], start_time=current_time, distance=emergency_distance)
             flight_zip.set_flight(flight_obj)
             scheduled_flights.append(flight_obj)
             self.emergency_order_queue.pop(0)  # Remove the processed Order from the queue
 
         resupply_flight_zip = next(self.get_available_resupply_zips(current_time), None)
         if len(self.order_queue) and resupply_flight_zip:
-            resupply_order_arr = self.compile_resupply_order()
+            resupply_order_arr, resupply_distance = self.compile_resupply_order()
             if resupply_order_arr:
-                flight_obj = Flight(order_arr=resupply_order_arr, start_time=current_time)
+                flight_obj = Flight(order_arr=resupply_order_arr, start_time=current_time, distance=resupply_distance)
                 resupply_flight_zip.set_flight(flight_obj)
                 scheduled_flights.append(flight_obj)
                 self.order_queue = [order for order in self.order_queue if order not in resupply_order_arr]
@@ -175,7 +178,7 @@ class ZipScheduler(object):
             if distance > self.MAX_RANGE:
                 self.order_queue.pop()  # Remove the most recent Resupply and try again
 
-        return resupply_order_arr
+        return resupply_order_arr, distance
 
 # *******************************************************************************************
 # **************************************** TEST CODE ****************************************
