@@ -143,8 +143,14 @@ class ZipScheduler(object):
             if not flight_zip:
                 return None
 
-            emergency_distance = order.hospital.get_distance_to_origin() * 2
-            flight_obj = Flight(order_arr=[order], start_time=current_time, distance=emergency_distance)
+            # If possible/necessary, add resupply runs to the end of the Emergency
+            if len(self.order_queue):
+                order_arr, emergency_distance = self.append_to_emergency_order(order)
+            else:
+                emergency_distance = order.hospital.get_distance_to_origin() * 2
+                order_arr = [order]
+
+            flight_obj = Flight(order_arr=order_arr, start_time=current_time, distance=emergency_distance)
             flight_zip.set_flight(flight_obj)
             scheduled_flights.append(flight_obj)
             self.emergency_order_queue.pop(0)  # Remove the processed Order from the queue
@@ -167,7 +173,7 @@ class ZipScheduler(object):
     def compile_resupply_order(self, current_time):
         distance = self.MAX_RANGE + 1  # Set the starting point over the max range
         resupply_order_arr = []
-        if len(self.order_queue) > 3:
+        if len(self.order_queue) > self.MAX_DELIVERIES:
             resupply_order_queue = self.sort_queue()
         else:
             resupply_order_queue = self.order_queue
@@ -216,6 +222,23 @@ class ZipScheduler(object):
         extra_order_arr.sort(key=lambda x: x[0])
         return [starting_order, self.order_queue[extra_order_arr[0][1]], self.order_queue[extra_order_arr[1][1]]]
 
+    def append_to_emergency_order(self, emergency_order):
+        distance = self.MAX_RANGE + 1
+        order_index = None
+
+        for i, resupply_order in enumerate(self.order_queue):
+            i_distance = emergency_order.hospital.get_distance_to_origin()
+            i_distance += emergency_order.hospital.get_distance_to_other_coordinates(resupply_order.hospital.x,
+                                                                                     resupply_order.hospital.y)
+            i_distance += resupply_order.hospital.get_distance_to_origin()
+            if i_distance < distance:
+                distance = i_distance
+                order_index = i
+
+        if distance <= self.MAX_RANGE and order_index is not None:
+            return [emergency_order, self.order_queue.pop(order_index)], distance
+        else:
+            return [emergency_order], emergency_order.hospital.get_distance_to_origin() * 2
 
 # *******************************************************************************************
 # **************************************** TEST CODE ****************************************
