@@ -1,3 +1,4 @@
+from itertools import permutations
 from math import sqrt
 import csv
 import os
@@ -55,19 +56,34 @@ def hospital_query(param, value):
 
 
 class Flight(object):
-    def __init__(self, zip_id, order_arr, start_time):
-        self.zip_id = zip_id
+    def __init__(self, order_arr, start_time):
         self.order_arr = order_arr
         self.start_time = start_time  # Assuming that flights start immediately after scheduled
 
     def __str__(self):
-        return u'Zip #{}, {} Orders, Start Time: {}'.format(self.zip_id, len(self.order_arr), self.start_time)
-
-    def get_flight_length(self):
-        pass
+        return u'{} Orders, Start Time: {}'.format(len(self.order_arr), self.start_time)
 
     def get_projected_end_time(self):
-        pass
+        return 0
+
+
+class Zip(object):
+    def __init__(self, key):
+        self.id = key
+        self.flight = None
+
+    def __str__(self):
+        return u'Zip #{}'.format(self.id)
+
+    def set_flight(self, flight):
+        self.flight = flight
+
+    def is_available(self, current_time):
+        if not self.flight:
+            return True
+
+        available_time = self.flight.get_projected_end_time()
+        return True if current_time >= available_time else False
 
 
 class ZipScheduler(object):
@@ -75,27 +91,54 @@ class ZipScheduler(object):
     MAX_SPEED = 30  # meters per section
     MAX_DELIVERIES = 3
     MAX_RANGE = 160  # kilometers
-    NUMBER_OF_ZIPS = 10
+    NUMBER_OF_ZIPS = 10  # Can be used for either Resupply or Emergency
+    EMERGENCY_ONLY_ZIPS = 2  # Always keep 2 Zips available for Emergency purposes only
 
     # Live queues
     order_queue = []
-    scheduled_flights = []
-    zip_dict = dict.fromkeys(range(1, (NUMBER_OF_ZIPS + 1)), None)
+    emergency_order_queue = []
+
+    def __init__(self):
+        self.zip_database = []
+        for i in range(0, self.NUMBER_OF_ZIPS):
+            self.zip_database.append(Zip(key=i+1))
+        self.resupply_zip_database = self.zip_database[:-self.EMERGENCY_ONLY_ZIPS]
 
     def queue_order(self, received_time, hospital, priority):
         order_obj = Order(received_time, hospital, priority)
 
         # Only append to the order_queue if we successfully matched a Hospital
         if order_obj.hospital:
-            self.order_queue.append(order_obj)
+            if order_obj.priority == 'Emergency':
+                self.emergency_order_queue.append(order_obj)
+            else:
+                self.order_queue.append(order_obj)
 
     def schedule_next_flight(self, current_time):
-        if not len(self.order_queue):
+        scheduled_flights = []
+
+        # If not orders exists, return None
+        if not len(self.order_queue) and not len(self.emergency_order_queue):
             return None
 
-        flight_obj = Flight(zip_id=1, order_arr=self.order_queue, start_time=current_time)
-        self.scheduled_flights.append(flight_obj)
-        self.order_queue = []
+        for order in self.emergency_order_queue:
+            # Assign an available Zip for each Emergency order, if possible
+            flight_zip = next((zip for zip in self.zip_database if zip.is_available(current_time)), None)
+            if not flight_zip:
+                return None
+
+            flight_obj = Flight(order_arr=[order], start_time=current_time)
+            flight_zip.set_flight(flight_obj)
+            scheduled_flights.append(flight_obj)
+            self.emergency_order_queue.pop(0)  # Remove the processed Order from the queue
+
+        # If only Emergency flights were ordered, return an array of them
+        if not len(self.order_queue):
+            return [flight_obj.order_arr[0].hospital.name for flight_obj in scheduled_flights]
+
+        perms = list(permutations(self.order_queue))
+        for perm in perms:
+            pass
 
 
 # *******************************************************************************************
@@ -122,9 +165,9 @@ with open(file_path, 'r') as csvfile:
 
 # Starting with the first received_time, scan through all remaining values in the all_orders_list every 60 seconds
 # Queue any orders with a received time less than the current time
-start_time = int(all_orders_list[0].get('received_time'))
-end_time = int(all_orders_list[len(all_orders_list) - 1].get('received_time'))
-call_times = range(start_time, end_time + 60, 60)
+orders_start_time = int(all_orders_list[0].get('received_time'))
+orders_end_time = int(all_orders_list[len(all_orders_list) - 1].get('received_time'))
+call_times = range(orders_start_time, orders_end_time + 60, 60)
 
 zip_scheduler = ZipScheduler()
 for call_time in call_times:
@@ -144,6 +187,6 @@ for call_time in call_times:
             break
 
     # Call logic to schedule a flight, if necessary
-    zip_scheduler.schedule_next_flight(current_time=call_time)
+    flight_hospital_list = zip_scheduler.schedule_next_flight(current_time=call_time)
 
 print('Done')
