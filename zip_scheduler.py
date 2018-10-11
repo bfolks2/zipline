@@ -158,8 +158,9 @@ class ZipScheduler(object):
     def compile_resupply_order(self):
         distance = self.MAX_RANGE + 1  # Set the starting point over the max range
         resupply_order_arr = []
-        while distance > self.MAX_RANGE and self.order_queue:
-            perms = list(permutations(self.order_queue))
+        resupply_order_queue = self.order_queue
+        while distance > self.MAX_RANGE and resupply_order_queue:
+            perms = list(permutations(resupply_order_queue))
             for perm in perms:
                 perm_distance = 0
                 last_x = 0
@@ -176,7 +177,7 @@ class ZipScheduler(object):
                     distance = perm_distance
                     resupply_order_arr = list(perm)
             if distance > self.MAX_RANGE:
-                self.order_queue.pop()  # Remove the most recent Resupply and try again
+                resupply_order_queue.pop()  # Remove the most recent Resupply and try again
 
         return resupply_order_arr, distance
 
