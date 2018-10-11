@@ -278,8 +278,6 @@ class ZipScheduler(object):
 # **************************************** TEST CODE ****************************************
 # *******************************************************************************************
 
-completed_list = []
-
 # First populate a Hospital array from the CSV data to mock out a "Hospital Database"
 # The order_array is left intentionally in primitive format, to more closely mimic real-time
 file_path = os.path.join(PROJECT_ROOT, 'zipline/csv_data/hospitals.csv')
@@ -323,7 +321,5 @@ for call_time in call_times:
 
     # Call logic to schedule a flight, if necessary
     flight_hospital_list = zip_scheduler.schedule_next_flight(current_time=call_time)
-    if flight_hospital_list:
-        completed_list.extend(flight_hospital_list)
 
 print('Done')
