@@ -67,8 +67,8 @@ class Flight(object):
     def __str__(self):
         return u'{} Orders, Start Time: {}'.format(len(self.order_arr), self.start_time)
 
-    def get_hospital_list_text(self):
-        return ', '.join([order.hospital.name for order in self.order_arr])
+    def get_hospital_list(self):
+        return [order.hospital.name for order in self.order_arr]
 
     def get_projected_end_time(self):
         total_time = (self.distance * 1000) / ZipScheduler.MAX_SPEED
@@ -100,7 +100,7 @@ class ZipScheduler(object):
     MAX_DELIVERIES = 3
     MAX_RANGE = 160  # kilometers
     MIN_RANGE = 160 * .85
-    MAX_TIME_ORDER = 18000
+    MAX_TIME_ORDER = 7200
     NUMBER_OF_ZIPS = 10  # Can be used for either Resupply or Emergency
     EMERGENCY_ONLY_ZIPS = 2  # Always keep 2 Zips available for Emergency purposes only
 
@@ -132,6 +132,7 @@ class ZipScheduler(object):
 
     def schedule_next_flight(self, current_time):
         scheduled_flights = []
+        flight_obj = None
 
         # If not orders exists, return None
         if not len(self.order_queue) and not len(self.emergency_order_queue):
@@ -146,6 +147,7 @@ class ZipScheduler(object):
             # If possible/necessary, add resupply runs to the end of the Emergency
             if len(self.order_queue):
                 order_arr, emergency_distance = self.append_to_emergency_order(order)
+                self.order_queue = [order for order in self.order_queue if order not in order_arr]
             else:
                 emergency_distance = order.hospital.get_distance_to_origin() * 2
                 order_arr = [order]
@@ -168,33 +170,19 @@ class ZipScheduler(object):
             else:
                 break
 
-        return [flight_obj.get_hospital_list_text() for flight_obj in scheduled_flights]
+        return flight_obj.get_hospital_list() if flight_obj else None
 
     def compile_resupply_order(self, current_time):
         distance = self.MAX_RANGE + 1  # Set the starting point over the max range
         resupply_order_arr = []
         if len(self.order_queue) > self.MAX_DELIVERIES:
-            resupply_order_queue = self.sort_queue()
+            resupply_order_queue = self.sort_order_queue()
         else:
-            resupply_order_queue = self.order_queue
+            resupply_order_queue = self.order_queue.copy()
 
         while distance > self.MAX_RANGE and resupply_order_queue:
             perms = list(permutations(resupply_order_queue))
-            for perm in perms:
-                perm_distance = 0
-                last_x = 0
-                last_y = 0
-                for i, order in enumerate(perm):
-                    perm_distance += order.hospital.get_distance_to_other_coordinates(last_x, last_y)
-                    if i == len(perm) - 1:
-                        # Return to origin
-                        perm_distance += order.hospital.get_distance_to_origin()
-                        break
-                    last_x = order.hospital.x
-                    last_y = order.hospital.y
-                if perm_distance < distance:
-                    distance = perm_distance
-                    resupply_order_arr = list(perm)
+            resupply_order_arr, distance = self.order_optimizer(perms, distance)
             if distance > self.MAX_RANGE:
                 resupply_order_queue.pop()  # Remove the most recent Resupply and try again
 
@@ -206,7 +194,28 @@ class ZipScheduler(object):
 
         return resupply_order_arr, distance
 
-    def sort_queue(self):
+    @staticmethod
+    def order_optimizer(perms, distance):
+        resupply_order_arr = []
+        for perm in perms:
+            perm_distance = 0
+            last_x = 0
+            last_y = 0
+            for i, order in enumerate(perm):
+                perm_distance += order.hospital.get_distance_to_other_coordinates(last_x, last_y)
+                if i == len(perm) - 1:
+                    # Return to origin
+                    perm_distance += order.hospital.get_distance_to_origin()
+                    break
+                last_x = order.hospital.x
+                last_y = order.hospital.y
+            if perm_distance < distance:
+                distance = perm_distance
+                resupply_order_arr = list(perm)
+
+        return resupply_order_arr, distance
+
+    def sort_order_queue(self):
         """
         Sort by priority and distance.  Start with the oldest order, then find its 2 closest matches
         :return:  order Array
@@ -220,29 +229,56 @@ class ZipScheduler(object):
                                                                                            starting_hospital.y), i + 1))
 
         extra_order_arr.sort(key=lambda x: x[0])
-        return [starting_order, self.order_queue[extra_order_arr[0][1]], self.order_queue[extra_order_arr[1][1]]]
+
+        final_order_arr = [starting_order]
+        for i in range(0, self.MAX_DELIVERIES - 1):
+            final_order_arr.append(self.order_queue[extra_order_arr[i][1]])
+
+        return final_order_arr
 
     def append_to_emergency_order(self, emergency_order):
-        distance = self.MAX_RANGE + 1
-        order_index = None
-
-        for i, resupply_order in enumerate(self.order_queue):
-            i_distance = emergency_order.hospital.get_distance_to_origin()
-            i_distance += emergency_order.hospital.get_distance_to_other_coordinates(resupply_order.hospital.x,
-                                                                                     resupply_order.hospital.y)
-            i_distance += resupply_order.hospital.get_distance_to_origin()
-            if i_distance < distance:
-                distance = i_distance
-                order_index = i
-
-        if distance <= self.MAX_RANGE and order_index is not None:
-            return [emergency_order, self.order_queue.pop(order_index)], distance
+        distance = self.MAX_RANGE + 1  # Set the starting point over the max range
+        resupply_order_arr = []
+        if len(self.order_queue) > self.MAX_DELIVERIES - 1:
+            resupply_order_queue = self.sort_order_queue_for_emergency(emergency_order)
         else:
-            return [emergency_order], emergency_order.hospital.get_distance_to_origin() * 2
+            resupply_order_queue = [emergency_order] + self.order_queue
+
+        while distance > self.MAX_RANGE and resupply_order_queue:
+            all_perms = list(permutations(resupply_order_queue))
+            perms = [perm for perm in all_perms if perm[0] == emergency_order]
+            resupply_order_arr, distance = self.order_optimizer(perms, distance)
+            if distance > self.MAX_RANGE:
+                resupply_order_queue.pop()  # Remove the most recent Resupply and try again
+
+        return resupply_order_arr, distance
+
+    def sort_order_queue_for_emergency(self, emergency_order):
+        """
+        Sort by priority and distance.  Start with the oldest order, then find its 2 closest matches
+        :return:  order Array
+        """
+
+        starting_hospital = emergency_order.hospital
+
+        extra_order_arr = []
+        for i, extra_order in enumerate(self.order_queue):
+            extra_order_arr.append((extra_order.hospital.get_distance_to_other_coordinates(starting_hospital.x,
+                                                                                           starting_hospital.y), i))
+
+        extra_order_arr.sort(key=lambda x: x[0])
+
+        final_order_arr = [emergency_order]
+        for i in range(0, self.MAX_DELIVERIES - 1):
+            final_order_arr.append(self.order_queue[extra_order_arr[i][1]])
+
+        return final_order_arr
 
 # *******************************************************************************************
 # **************************************** TEST CODE ****************************************
 # *******************************************************************************************
+
+completed_list = []
 
 # First populate a Hospital array from the CSV data to mock out a "Hospital Database"
 # The order_array is left intentionally in primitive format, to more closely mimic real-time
@@ -287,5 +323,7 @@ for call_time in call_times:
 
     # Call logic to schedule a flight, if necessary
     flight_hospital_list = zip_scheduler.schedule_next_flight(current_time=call_time)
+    if flight_hospital_list:
+        completed_list.extend(flight_hospital_list)
 
 print('Done')
