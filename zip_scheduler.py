@@ -158,7 +158,11 @@ class ZipScheduler(object):
     def compile_resupply_order(self):
         distance = self.MAX_RANGE + 1  # Set the starting point over the max range
         resupply_order_arr = []
-        resupply_order_queue = self.order_queue
+        if len(self.order_queue) > 3:
+            resupply_order_queue = self.sort_queue()
+        else:
+            resupply_order_queue = self.order_queue
+
         while distance > self.MAX_RANGE and resupply_order_queue:
             perms = list(permutations(resupply_order_queue))
             for perm in perms:
@@ -180,6 +184,23 @@ class ZipScheduler(object):
                 resupply_order_queue.pop()  # Remove the most recent Resupply and try again
 
         return resupply_order_arr, distance
+
+    def sort_queue(self):
+        """
+        Sort by priority and distance.  Start with the oldest order, then find its 2 closest matches
+        :return:  order Array
+        """
+        starting_order = self.order_queue[0]
+        starting_hospital = starting_order.hospital
+
+        extra_order_arr = []
+        for i, extra_order in enumerate(self.order_queue[1:]):
+            extra_order_arr.append((extra_order.hospital.get_distance_to_other_coordinates(starting_hospital.x,
+                                                                                           starting_hospital.y), i + 1))
+
+        extra_order_arr.sort(key=lambda x: x[0])
+        return [starting_order, self.order_queue[extra_order_arr[0][1]], self.order_queue[extra_order_arr[1][1]]]
+
 
 # *******************************************************************************************
 # **************************************** TEST CODE ****************************************
