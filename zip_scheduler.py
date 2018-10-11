@@ -23,6 +23,9 @@ class Order(object):
     def __str__(self):
         return u'{} Order for {}, {}'.format(self.priority, self.hospital.name, self.received_time)
 
+    def get_time_order_held(self, current_time):
+        return current_time - self.received_time
+
 
 class Hospital(object):
     def __init__(self, name, coordinates):
@@ -96,6 +99,8 @@ class ZipScheduler(object):
     MAX_SPEED = 30  # meters per second
     MAX_DELIVERIES = 3
     MAX_RANGE = 160  # kilometers
+    MIN_RANGE = 160 * .85
+    MAX_TIME_ORDER = 18000
     NUMBER_OF_ZIPS = 10  # Can be used for either Resupply or Emergency
     EMERGENCY_ONLY_ZIPS = 2  # Always keep 2 Zips available for Emergency purposes only
 
@@ -146,7 +151,7 @@ class ZipScheduler(object):
 
         resupply_flight_zip = next(self.get_available_resupply_zips(current_time), None)
         while len(self.order_queue) and resupply_flight_zip:
-            resupply_order_arr, resupply_distance = self.compile_resupply_order()
+            resupply_order_arr, resupply_distance = self.compile_resupply_order(current_time)
             if resupply_order_arr:
                 flight_obj = Flight(order_arr=resupply_order_arr, start_time=current_time, distance=resupply_distance)
                 resupply_flight_zip.set_flight(flight_obj)
@@ -154,10 +159,12 @@ class ZipScheduler(object):
 
                 self.order_queue = [order for order in self.order_queue if order not in resupply_order_arr]
                 resupply_flight_zip = next(self.get_available_resupply_zips(current_time), None)
+            else:
+                break
 
         return [flight_obj.get_hospital_list_text() for flight_obj in scheduled_flights]
 
-    def compile_resupply_order(self):
+    def compile_resupply_order(self, current_time):
         distance = self.MAX_RANGE + 1  # Set the starting point over the max range
         resupply_order_arr = []
         if len(self.order_queue) > 3:
@@ -184,6 +191,12 @@ class ZipScheduler(object):
                     resupply_order_arr = list(perm)
             if distance > self.MAX_RANGE:
                 resupply_order_queue.pop()  # Remove the most recent Resupply and try again
+
+        # Only send orders of 1 Item if they above the MIN_RANGE or past the MAX_TIME_ORDER
+        if len(resupply_order_arr) == 1:
+            lone_order = resupply_order_arr[0]
+            if distance < self.MIN_RANGE and self.MAX_TIME_ORDER > lone_order.get_time_order_held(current_time):
+                return None, distance
 
         return resupply_order_arr, distance
 
