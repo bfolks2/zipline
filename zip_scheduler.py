@@ -36,8 +36,8 @@ class Hospital(object):
     def get_distance_to_origin(self):
         return self._distance_formula_km(x1=0, y1=0, x2=self.x, y2=self.y)
 
-    def get_distance_to_other_hospital(self, other_hospital):
-        return self._distance_formula_km(x1=other_hospital.x, y1=other_hospital.y, x2=self.x, y2=self.y)
+    def get_distance_to_other_coordinates(self, x_coord, y_coord):
+        return self._distance_formula_km(x1=x_coord, y1=y_coord, x2=self.x, y2=self.y)
 
     @staticmethod
     def _distance_formula_km(x1, y1, x2, y2):
@@ -62,6 +62,9 @@ class Flight(object):
 
     def __str__(self):
         return u'{} Orders, Start Time: {}'.format(len(self.order_arr), self.start_time)
+
+    def get_hospital_list_text(self):
+        return ', '.join([order.hospital.name for order in self.order_arr])
 
     def get_projected_end_time(self):
         return 0
@@ -104,6 +107,9 @@ class ZipScheduler(object):
             self.zip_database.append(Zip(key=i+1))
         self.resupply_zip_database = self.zip_database[:-self.EMERGENCY_ONLY_ZIPS]
 
+    def get_available_zips(self, current_time):
+        return [zip_obj for zip_obj in self.zip_database if zip_obj.is_available(current_time)]
+
     def queue_order(self, received_time, hospital, priority):
         order_obj = Order(received_time, hospital, priority)
 
@@ -123,7 +129,7 @@ class ZipScheduler(object):
 
         for order in self.emergency_order_queue:
             # Assign an available Zip for each Emergency order, if possible
-            flight_zip = next((zip for zip in self.zip_database if zip.is_available(current_time)), None)
+            flight_zip = next((self.get_available_zips(current_time)), None)
             if not flight_zip:
                 return None
 
@@ -134,12 +140,35 @@ class ZipScheduler(object):
 
         # If only Emergency flights were ordered, return an array of them
         if not len(self.order_queue):
-            return [flight_obj.order_arr[0].hospital.name for flight_obj in scheduled_flights]
+            return [flight_obj.get_hospital_list_text() for flight_obj in scheduled_flights]
 
-        perms = list(permutations(self.order_queue))
-        for perm in perms:
-            pass
+        distance = self.MAX_RANGE + 1  # Set the starting point over the max range
+        resupply_order_arr = []
+        while distance > self.MAX_RANGE and self.order_queue:
+            perms = list(permutations(self.order_queue))
+            for perm in perms:
+                perm_distance = 0
+                last_x = 0
+                last_y = 0
+                for i, order in enumerate(perm):
+                    perm_distance += order.hospital.get_distance_to_other_coordinates(last_x, last_y)
+                    if i == len(perm) - 1:
+                        # Return to origin
+                        perm_distance += order.hospital.get_distance_to_origin()
+                        break
+                    last_x = order.hospital.x
+                    last_y = order.hospital.y
+                if perm_distance < distance:
+                    distance = perm_distance
+                    resupply_order_arr = list(perm)
+            if distance > self.MAX_RANGE:
+                self.order_queue.pop()  # Remove the most recent Resupply and try again
 
+        if resupply_order_arr:
+            flight_obj = Flight(order_arr=resupply_order_arr, start_time=current_time)
+            scheduled_flights.append(flight_obj)
+
+        return [flight_obj.get_hospital_list_text() for flight_obj in scheduled_flights]
 
 # *******************************************************************************************
 # **************************************** TEST CODE ****************************************
