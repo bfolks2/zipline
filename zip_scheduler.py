@@ -274,9 +274,12 @@ class ZipScheduler(object):
 
         return final_order_arr
 
+
 # *******************************************************************************************
 # **************************************** TEST CODE ****************************************
 # *******************************************************************************************
+
+print('Start')
 
 # First populate a Hospital array from the CSV data to mock out a "Hospital Database"
 # The order_array is left intentionally in primitive format, to more closely mimic real-time
@@ -322,4 +325,4 @@ for call_time in call_times:
     # Call logic to schedule a flight, if necessary
     flight_hospital_list = zip_scheduler.schedule_next_flight(current_time=call_time)
 
-print('Done')
+print('Finished')
